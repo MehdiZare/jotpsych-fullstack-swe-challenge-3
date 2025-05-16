@@ -34,18 +34,23 @@ There are plenty of things we can do depending on the direction of the product
 - Repo:
   - pre-commit
   - styling
+  - I generally prefer to keep the repo separate for front/back/infra
   - 
 
 - Backend
+  - Testing!
   - Transcribe endpoint
   - Queue system to process jobs
   - Containerize the app for deployment
   - Add authentication mechanism like Oauth, JWT, ...
   - Real cashing of requests on something like redis
   - Database of user requests
-  - ...
+  - Use dependency injection more extensively, it make the logic more robust and easier to read
+  - Rate limiting
+  - Add open telemetry or something like that to capture requests
 
 - Frontend
+  - Testing!
   - Analytic integration 
   - 
 
