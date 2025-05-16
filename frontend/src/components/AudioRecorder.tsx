@@ -3,24 +3,38 @@ import React, { useState, useEffect } from "react";
 import APIService from "../services/APIService";
 
 interface AudioRecorderProps {
-  onTranscriptionComplete: (text: string) => void;
+  onJobStarted: () => void;
 }
 
-const AudioRecorder: React.FC<AudioRecorderProps> = ({
-                                                       onTranscriptionComplete
-                                                     }) => {
+const AudioRecorder: React.FC<AudioRecorderProps> = ({ onJobStarted }) => {
   const [isRecording, setIsRecording] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [recordingTime, setRecordingTime] = useState(0);
-  const [finalRecordingTime, setFinalRecordingTime] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
 
   const MAX_RECORDING_TIME = 10;
+
+  // Get user ID on component mount
+  useEffect(() => {
+    const getUserId = async () => {
+      const storedUserId = localStorage.getItem('userId');
+      if (storedUserId) {
+        setUserId(storedUserId);
+      } else {
+        const response = await APIService.getUser();
+        if (response.data) {
+          setUserId(response.data);
+        }
+      }
+    };
+
+    getUserId();
+  }, []);
 
   const stopRecording = () => {
     if (mediaRecorder && mediaRecorder.state === "recording") {
       mediaRecorder.stop();
-      setFinalRecordingTime(recordingTime);
       setIsRecording(false);
     }
   };
@@ -39,16 +53,20 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
           return newTime;
         });
       }, 1000);
+    } else {
+      setRecordingTime(0); // Reset recording time when not recording
     }
 
     return () => {
       clearInterval(interval);
     };
-  }, [isRecording, recordingTime]);
+  }, [isRecording]);
 
   const startRecording = async () => {
     try {
+      // Reset states
       setRecordingTime(0);
+      setError(null);
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
@@ -61,23 +79,25 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       recorder.onstop = async () => {
         const audioBlob = new Blob(audioChunks, { type: "audio/wav" });
 
-        // Set transcribing state to true
-        setIsTranscribing(true);
-
         try {
-          // Use APIService instead of direct fetch
           const response = await APIService.transcribeAudio(audioBlob);
 
           if (response.data) {
-            onTranscriptionComplete(response.data);
+            // Notify parent that a new job has been started
+            onJobStarted();
           } else if (response.error) {
-            console.error("Transcription error:", response.error);
+            // Check if it's a version mismatch error
+            if (response.stale) {
+              // Let the VersionAlert component handle the UI
+              console.error("Version mismatch:", response.error);
+            } else {
+              // Show other errors in the UI
+              setError(response.error);
+            }
           }
         } catch (error) {
+          setError(`Error sending audio: ${error}`);
           console.error("Error sending audio:", error);
-        } finally {
-          // Set transcribing state to false when done
-          setIsTranscribing(false);
         }
 
         stream.getTracks().forEach((track) => track.stop());
@@ -87,43 +107,42 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({
       setMediaRecorder(recorder);
       setIsRecording(true);
     } catch (error) {
+      setError(`Error accessing microphone: ${error}`);
       console.error("Error accessing microphone:", error);
     }
   };
 
   return (
       <div className="flex flex-col items-center gap-4">
-        {finalRecordingTime > 0 && !isTranscribing && (
-            <p className="text-sm text-gray-600">
-              Final recording time: {finalRecordingTime}s
-            </p>
-        )}
-
-        {!isTranscribing ? (
-            <button
-                onClick={isRecording ? stopRecording : startRecording}
-                className={`px-6 py-3 rounded-lg font-semibold ${
-                    isRecording
-                        ? "bg-red-500 hover:bg-red-600 text-white"
-                        : "bg-blue-500 hover:bg-blue-600 text-white"
-                }`}
-                disabled={isTranscribing}
-            >
-              {isRecording
-                  ? `Stop Recording (${MAX_RECORDING_TIME - recordingTime}s)`
-                  : "Start Recording"}
-            </button>
-        ) : (
-            <div className="flex flex-col items-center gap-2">
-              <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-              <p className="text-sm text-gray-600">Transcribing your audio...</p>
+        {userId && (
+            <div className="text-xs text-gray-500 mb-1">
+              User ID: {userId.substring(0, 8)}...
             </div>
         )}
+
+        <button
+            onClick={isRecording ? stopRecording : startRecording}
+            className={`px-6 py-3 rounded-lg font-semibold ${
+                isRecording
+                    ? "bg-red-500 hover:bg-red-600 text-white"
+                    : "bg-blue-500 hover:bg-blue-600 text-white"
+            }`}
+        >
+          {isRecording
+              ? `Stop Recording (${MAX_RECORDING_TIME - recordingTime}s)`
+              : "Start Recording"}
+        </button>
 
         {isRecording && (
             <p className="text-sm text-gray-600">
               Recording in progress (Current time: {recordingTime}s)
             </p>
+        )}
+
+        {error && (
+            <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-md text-red-600 text-sm">
+              {error}
+            </div>
         )}
       </div>
   );
