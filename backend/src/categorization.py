@@ -2,8 +2,7 @@
 import json
 from typing import Dict, Any, Literal, Optional
 
-from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
-from langchain_core.output_parsers import JsonOutputParser
+from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 from langchain_anthropic import ChatAnthropic
 from langchain_openai import ChatOpenAI
@@ -68,7 +67,6 @@ Your response should have these fields:
 - primary_topic: The main topic of the transcript
 - sentiment: Must be one of ["positive", "neutral", "negative"]
 - keywords: 3-5 comma-separated keywords from the transcript
-- confidence: A float between 0.0 and 1.0 indicating your confidence
 - summary: A 1-2 sentence summary of the transcript
 
 DO NOT include any explanations, just return the JSON.

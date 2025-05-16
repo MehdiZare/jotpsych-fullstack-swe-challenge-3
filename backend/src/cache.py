@@ -1,9 +1,10 @@
 # cache.py
 import time
 from typing import Dict, Any, TypeVar, Generic, Optional, Callable, Tuple, Literal
-import logging
 
-logger = logging.getLogger(__name__)
+from src.logging import get_logger
+logger = get_logger(__name__)
+
 
 T = TypeVar('T')
 K = TypeVar('K')
