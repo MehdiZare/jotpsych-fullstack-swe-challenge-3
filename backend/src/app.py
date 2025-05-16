@@ -4,10 +4,11 @@ import random
 import uuid
 import threading
 import logging
+import hashlib
 from datetime import datetime
-from typing import Dict, Optional, Literal, List, Union
+from typing import Dict, Optional, Literal, List
 
-from fastapi import FastAPI, HTTPException, Request, Response, Depends, Header, File, UploadFile, Form
+from fastapi import FastAPI, HTTPException, Request, Response, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import settings
@@ -17,6 +18,7 @@ from src.schemas import (
     TranscriptCategory
 )
 from src.categorization import categorize_transcript
+from src.cache import transcription_cache, category_cache, user_preference_cache
 
 # Configure logging
 logging.basicConfig(
@@ -70,24 +72,57 @@ async def verify_version(
 
 def process_transcription(job_id: str, audio_data: bytes):
     """Mock function to simulate async transcription processing. Returns a random transcription."""
+    # Check cache first based on audio data hash
+    audio_hash = hashlib.md5(audio_data).hexdigest()
+    cached_transcription = transcription_cache.get(audio_hash)
+
+    if cached_transcription:
+        logger.info(f"Using cached transcription for job {job_id}")
+        return cached_transcription
+
+    # Simulate processing delay
     time.sleep(random.randint(2, 5))
-    return random.choice([
+
+    # Generate random transcription
+    transcription = random.choice([
         "I've always been fascinated by cars, especially classic muscle cars from the 60s and 70s. The raw power and beautiful design of those vehicles is just incredible.",
         "Bald eagles are such majestic creatures. I love watching them soar through the sky and dive down to catch fish. Their white heads against the blue sky is a sight I'll never forget.",
         "Deep sea diving opens up a whole new world of exploration. The mysterious creatures and stunning coral reefs you encounter at those depths are unlike anything else on Earth."
     ])
+
+    # Cache the result
+    transcription_cache.set(audio_hash, transcription)
+
+    return transcription
 
 
 def get_user_model_from_db(user_id: str) -> Literal["openai", "anthropic"]:
     """
     Mocks a slow and expensive function to simulate fetching a user's preferred LLM model from database
     Returns either 'openai' or 'anthropic' after a random delay.
+    Now with caching!
     """
-    time.sleep(random.randint(1, 2))  # Reduced for testing purposes
-    return random.choice(["openai", "anthropic"])
+    # Check if we have this user's preference cached
+    cached_preference = user_preference_cache.get(user_id)
+    if cached_preference:
+        logger.info(f"Using cached LLM preference for user {user_id}: {cached_preference}")
+        return cached_preference
+
+    # Simulate slow database query
+    logger.info(f"Expensive database query for user {user_id} LLM preference")
+    time.sleep(random.randint(5, 8))  # Simulate slow DB query
+
+    # Get random preference
+    preference = random.choice(["openai", "anthropic"])
+
+    # Cache the result
+    user_preference_cache.set(user_id, preference)
+
+    logger.info(f"User {user_id} LLM preference set to {preference}")
+    return preference
 
 
-def process_transcription_job(job_id: str, user_id: str):
+def process_transcription_job(job_id: str, user_id: str, audio_data: bytes = b"mock_audio"):
     """
     Process a transcription job in a separate thread
     Updates job status at various points
@@ -98,42 +133,53 @@ def process_transcription_job(job_id: str, user_id: str):
         active_jobs[job_id]["progress"] = 0.1
 
         # Simulate initial processing delay
-        time.sleep(random.uniform(1, 2))
+        time.sleep(random.uniform(0.5, 1))
         active_jobs[job_id]["progress"] = 0.3
 
-        # Simulate main transcription work
-        time.sleep(random.uniform(1, 3))
-        active_jobs[job_id]["progress"] = 0.5
-
-        # Generate random transcription
-        transcription = random.choice([
-            "I've always been fascinated by cars, especially classic muscle cars from the 60s and 70s. The raw power and beautiful design of those vehicles is just incredible.",
-            "Bald eagles are such majestic creatures. I love watching them soar through the sky and dive down to catch fish. Their white heads against the blue sky is a sight I'll never forget.",
-            "Deep sea diving opens up a whole new world of exploration. The mysterious creatures and stunning coral reefs you encounter at those depths are unlike anything else on Earth."
-        ])
+        # Get transcription (now with caching)
+        transcription = process_transcription(job_id, audio_data)
 
         # Update job with transcription
         active_jobs[job_id]["transcription"] = transcription
-        active_jobs[job_id]["progress"] = 0.7
+        active_jobs[job_id]["progress"] = 0.5
 
-        # Get the user's preferred LLM model
-        logger.info(f"Getting LLM preference for user {user_id}")
-        llm_provider = get_user_model_from_db(user_id)
-        logger.info(f"User {user_id} prefers {llm_provider}")
+        # Generate hash for the transcription to use as category cache key
+        transcription_hash = hashlib.md5(transcription.encode()).hexdigest()
 
-        # Categorize the transcription using the appropriate LLM
-        logger.info(f"Categorizing transcription for job {job_id} using {llm_provider}")
-        try:
-            category = categorize_transcript(transcription, llm_provider)
-            if category:
-                active_jobs[job_id]["category"] = category.model_dump()
-                logger.info(f"Categorization successful for job {job_id}: {category.primary_topic}")
-            else:
-                logger.warning(f"Categorization failed for job {job_id}")
-        except Exception as e:
-            logger.error(f"Error during categorization for job {job_id}: {e}")
+        # Check if we have a cached categorization for this transcription
+        cached_category = category_cache.get(transcription_hash)
 
-        active_jobs[job_id]["progress"] = 0.9
+        if cached_category:
+            logger.info(f"Using cached categorization for job {job_id}")
+            active_jobs[job_id]["category"] = cached_category
+            active_jobs[job_id]["progress"] = 0.9
+        else:
+            # Get the user's preferred LLM model (now with caching)
+            logger.info(f"Getting LLM preference for user {user_id}")
+            llm_provider = get_user_model_from_db(user_id)
+            logger.info(f"User {user_id} prefers {llm_provider}")
+
+            active_jobs[job_id]["progress"] = 0.7
+
+            # Categorize the transcription using the appropriate LLM
+            logger.info(f"Categorizing transcription for job {job_id} using {llm_provider}")
+            try:
+                category = categorize_transcript(transcription, llm_provider)
+                if category:
+                    category_dict = category.model_dump()
+                    active_jobs[job_id]["category"] = category_dict
+
+                    # Cache the categorization result
+                    category_cache.set(transcription_hash, category_dict)
+
+                    logger.info(f"Categorization successful for job {job_id}: {category.primary_topic}")
+                else:
+                    logger.warning(f"Categorization failed for job {job_id}")
+            except Exception as e:
+                logger.error(f"Error during categorization for job {job_id}: {e}")
+
+            active_jobs[job_id]["progress"] = 0.9
+
         time.sleep(random.uniform(0.5, 1))
 
         # Update job with finished status
@@ -177,6 +223,18 @@ async def get_version():
     return VersionResponse(version=API_VERSION)
 
 
+@app.get("/stats", response_model=Dict)
+async def get_cache_stats():
+    """Get cache statistics"""
+    return {
+        "transcription_cache": transcription_cache.get_stats(),
+        "category_cache": category_cache.get_stats(),
+        "user_preference_cache": user_preference_cache.get_stats(),
+        "active_jobs": len(active_jobs),
+        "users": len(user_store)
+    }
+
+
 @app.get("/user", response_model=UserResponse)
 async def get_user(x_user_id: Optional[str] = Header(None)):
     """
@@ -206,6 +264,10 @@ async def start_transcription(
     # Generate a job ID
     job_id = str(uuid.uuid4())
 
+    # Read request body for hashing (in real app, we'd extract the audio file)
+    # For demo purposes, we're using a random seed as mock audio data
+    mock_audio_data = str(random.randint(1, 10)).encode()  # Use random seed for demo
+
     # Create job entry with initial status
     active_jobs[job_id] = {
         "user_id": user_id,
@@ -224,7 +286,7 @@ async def start_transcription(
     # Start a background thread to process the job
     thread = threading.Thread(
         target=process_transcription_job,
-        args=(job_id, user_id)
+        args=(job_id, user_id, mock_audio_data)
     )
     thread.daemon = True
     thread.start()
@@ -318,6 +380,19 @@ async def get_user_jobs(
     logger.info(f"Jobs list requested by user {user_id}")
 
     return jobs
+
+
+@app.post("/clear-cache", response_model=Dict)
+async def clear_cache():
+    """Clear all caches"""
+    transcription_cache.clear()
+    category_cache.clear()
+    user_preference_cache.clear()
+
+    return {
+        "status": "success",
+        "message": "All caches cleared"
+    }
 
 
 if __name__ == "__main__":
