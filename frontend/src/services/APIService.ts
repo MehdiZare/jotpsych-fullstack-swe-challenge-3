@@ -1,3 +1,4 @@
+// serc/services/APIService.ts
 interface APIResponse<T> {
   data?: T;
   error?: string;
@@ -11,13 +12,14 @@ class APIService {
 
   // Generic request handler
   private async makeRequest<T>(
-    endpoint: string,
-    method: "GET" | "POST" | "PUT" | "DELETE" = "GET",
-    body?: FormData | object
+      endpoint: string,
+      method: "GET" | "POST" | "PUT" | "DELETE" = "GET",
+      body?: FormData | object
   ): Promise<APIResponse<T>> {
     try {
       const headers: HeadersInit = {
-        // TODO: Version and user ID
+        "X-API-Version": this.currentVersion,
+        "X-User-ID": this.userID
       };
 
       // Add Content-Type header if body is a plain object (not FormData)
@@ -32,11 +34,11 @@ class APIService {
       };
 
       const response = await fetch(
-        `${this.baseUrl}${endpoint}`,
-        requestOptions
+          `${this.baseUrl}${endpoint}`,
+          requestOptions
       );
       const data = await response.json();
-      return { data: data };
+      return { data: data.transcription, version: this.currentVersion };
     } catch (error) {
       return { error: `Request failed: ${error}` };
     }

@@ -1,10 +1,17 @@
+// src/components/AudioRecorder.tsx
 import React, { useState, useEffect } from "react";
+import APIService from "../services/APIService";
 
-const AudioRecorder = ({ onTranscriptionComplete }) => {
+interface AudioRecorderProps {
+  onTranscriptionComplete: (text: string) => void;
+}
+
+const AudioRecorder: React.FC<AudioRecorderProps> = ({
+                                                       onTranscriptionComplete
+                                                     }) => {
   const [isRecording, setIsRecording] = useState(false);
-  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(
-    null
-  );
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [recordingTime, setRecordingTime] = useState(0);
   const [finalRecordingTime, setFinalRecordingTime] = useState(0);
 
@@ -19,22 +26,25 @@ const AudioRecorder = ({ onTranscriptionComplete }) => {
   };
 
   useEffect(() => {
-    let interval;
+    let interval: ReturnType<typeof setInterval>;
 
     if (isRecording) {
       interval = setInterval(() => {
-        if (recordingTime >= MAX_RECORDING_TIME) {
-          stopRecording();
-        } else {
-          setRecordingTime(recordingTime + 1);
-        }
+        setRecordingTime(prevTime => {
+          const newTime = prevTime + 1;
+          if (newTime >= MAX_RECORDING_TIME) {
+            stopRecording();
+            return MAX_RECORDING_TIME;
+          }
+          return newTime;
+        });
       }, 1000);
     }
 
     return () => {
       clearInterval(interval);
     };
-  }, [isRecording]);
+  }, [isRecording, recordingTime]);
 
   const startRecording = async () => {
     try {
@@ -50,19 +60,24 @@ const AudioRecorder = ({ onTranscriptionComplete }) => {
 
       recorder.onstop = async () => {
         const audioBlob = new Blob(audioChunks, { type: "audio/wav" });
-        const formData = new FormData();
-        formData.append("audio", audioBlob);
+
+        // Set transcribing state to true
+        setIsTranscribing(true);
 
         try {
-          // TODO: Use APIService for api requests
-          const response = await fetch("http://localhost:8000/transcribe", {
-            method: "POST",
-            body: formData,
-          });
-          const data = await response.json();
-          onTranscriptionComplete(data.transcription);
+          // Use APIService instead of direct fetch
+          const response = await APIService.transcribeAudio(audioBlob);
+
+          if (response.data) {
+            onTranscriptionComplete(response.data);
+          } else if (response.error) {
+            console.error("Transcription error:", response.error);
+          }
         } catch (error) {
           console.error("Error sending audio:", error);
+        } finally {
+          // Set transcribing state to false when done
+          setIsTranscribing(false);
         }
 
         stream.getTracks().forEach((track) => track.stop());
@@ -77,30 +92,40 @@ const AudioRecorder = ({ onTranscriptionComplete }) => {
   };
 
   return (
-    <div className="flex flex-col items-center gap-4">
-      {finalRecordingTime > 0 && (
-        <p className="text-sm text-gray-600">
-          Final recording time: {finalRecordingTime}s
-        </p>
-      )}
-      <button
-        onClick={isRecording ? stopRecording : startRecording}
-        className={`px-6 py-3 rounded-lg font-semibold ${
-          isRecording
-            ? "bg-red-500 hover:bg-red-600 text-white"
-            : "bg-blue-500 hover:bg-blue-600 text-white"
-        }`}
-      >
-        {isRecording
-          ? `Stop Recording (${5 - recordingTime}s)`
-          : "Start Recording"}
-      </button>
-      {isRecording && (
-        <p className="text-sm text-gray-600">
-          Recording in progress (Current time: {recordingTime}s)
-        </p>
-      )}
-    </div>
+      <div className="flex flex-col items-center gap-4">
+        {finalRecordingTime > 0 && !isTranscribing && (
+            <p className="text-sm text-gray-600">
+              Final recording time: {finalRecordingTime}s
+            </p>
+        )}
+
+        {!isTranscribing ? (
+            <button
+                onClick={isRecording ? stopRecording : startRecording}
+                className={`px-6 py-3 rounded-lg font-semibold ${
+                    isRecording
+                        ? "bg-red-500 hover:bg-red-600 text-white"
+                        : "bg-blue-500 hover:bg-blue-600 text-white"
+                }`}
+                disabled={isTranscribing}
+            >
+              {isRecording
+                  ? `Stop Recording (${MAX_RECORDING_TIME - recordingTime}s)`
+                  : "Start Recording"}
+            </button>
+        ) : (
+            <div className="flex flex-col items-center gap-2">
+              <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+              <p className="text-sm text-gray-600">Transcribing your audio...</p>
+            </div>
+        )}
+
+        {isRecording && (
+            <p className="text-sm text-gray-600">
+              Recording in progress (Current time: {recordingTime}s)
+            </p>
+        )}
+      </div>
   );
 };
 
