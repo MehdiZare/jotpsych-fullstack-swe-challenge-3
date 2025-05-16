@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import APIService from '../services/APIService';
 import { ActiveJob } from '../types/api';
-import CategoryDisplay from './CategoryDisplay';
 
 interface JobsListProps {
     onSelectTranscription: (text: string, jobId: string) => void;
@@ -10,7 +9,6 @@ interface JobsListProps {
 
 const JobsList: React.FC<JobsListProps> = ({ onSelectTranscription }) => {
     const [jobs, setJobs] = useState<Map<string, ActiveJob>>(new Map());
-    const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
@@ -82,40 +80,54 @@ const JobsList: React.FC<JobsListProps> = ({ onSelectTranscription }) => {
         return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     };
 
-    // Helper function to get appropriate status color
-    const getStatusColor = (status: string): string => {
+    // Helper function to get appropriate status badge
+    const getStatusBadge = (status: string): JSX.Element => {
+        let badgeClass = "";
+
         switch (status) {
             case 'queued':
-                return 'text-yellow-600';
+                badgeClass = "badge-warning";
+                break;
             case 'processing':
-                return 'text-blue-600';
+                badgeClass = "badge-primary";
+                break;
             case 'completed':
-                return 'text-green-600';
+                badgeClass = "badge-success";
+                break;
             case 'error':
-                return 'text-red-600';
+                badgeClass = "badge-error";
+                break;
             default:
-                return 'text-gray-600';
+                badgeClass = "bg-gray-100 text-gray-600";
         }
+
+        return (
+            <span className={`badge ${badgeClass}`}>
+        {status.charAt(0).toUpperCase() + status.slice(1)}
+      </span>
+        );
     };
 
-    // Helper function to get sentiment color
-    const getSentimentColor = (sentiment: string): string => {
+    // Helper function to get sentiment badge
+    const getSentimentBadge = (sentiment: string): JSX.Element => {
+        let badgeClass = "";
+
         switch (sentiment) {
             case 'positive':
-                return 'text-green-600';
+                badgeClass = "badge-success";
+                break;
             case 'negative':
-                return 'text-red-600';
+                badgeClass = "badge-error";
+                break;
             default:
-                return 'text-blue-600';
+                badgeClass = "badge-primary";
         }
-    };
 
-    const toggleExpandJob = (jobId: string) => {
-        if (expandedJobId === jobId) {
-            setExpandedJobId(null);
-        } else {
-            setExpandedJobId(jobId);
-        }
+        return (
+            <span className={`badge ${badgeClass}`}>
+        {sentiment.charAt(0).toUpperCase() + sentiment.slice(1)}
+      </span>
+        );
     };
 
     // Convert jobs Map to array and sort by creation time (newest first)
@@ -124,35 +136,39 @@ const JobsList: React.FC<JobsListProps> = ({ onSelectTranscription }) => {
 
     if (loading) {
         return (
-            <div className="w-full max-w-lg mt-8 mb-16 flex justify-center">
-                <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            <div className="card animate-pulse">
+                <h2 className="card-title">Transcription Jobs</h2>
+                <div className="space-y-3 mt-4">
+                    {[1, 2].map(i => (
+                        <div key={i} className="bg-gray-100 h-20 rounded-lg animate-pulse"></div>
+                    ))}
+                </div>
             </div>
         );
     }
 
     if (error) {
         return (
-            <div className="w-full max-w-lg mt-8 mb-16">
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
-                    <p className="font-medium">Error loading jobs</p>
-                    <p className="text-sm mt-1">{error}</p>
-                    <button
-                        className="mt-2 text-sm bg-red-100 hover:bg-red-200 px-3 py-1 rounded"
-                        onClick={() => window.location.reload()}
-                    >
-                        Retry
-                    </button>
-                </div>
+            <div className="card border-red-100">
+                <h2 className="card-title text-red-600">Error Loading Jobs</h2>
+                <p className="text-gray-600 mt-2">{error}</p>
+                <button
+                    className="mt-4 btn btn-primary"
+                    onClick={() => window.location.reload()}
+                >
+                    Retry
+                </button>
             </div>
         );
     }
 
     if (sortedJobs.length === 0) {
         return (
-            <div className="w-full max-w-lg mt-8 mb-16">
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center text-gray-500">
-                    <p>No transcription jobs yet</p>
-                    <p className="text-sm mt-1">Record some audio to get started</p>
+            <div className="card">
+                <h2 className="card-title">Transcription Jobs</h2>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 text-center mt-4">
+                    <p className="text-gray-600 font-medium">No transcription jobs yet</p>
+                    <p className="text-sm mt-2 text-gray-500">Record some audio to get started</p>
                 </div>
             </div>
         );
@@ -166,54 +182,41 @@ const JobsList: React.FC<JobsListProps> = ({ onSelectTranscription }) => {
     };
 
     return (
-        <div className="w-full max-w-lg mt-8 mb-16">
-            <h2 className="text-lg font-semibold mb-3">Transcription Jobs</h2>
-            <div className="space-y-4">
+        <div className="card overflow-auto" style={{ maxHeight: '550px' }}>
+            <h2 className="card-title sticky top-0 bg-white z-10 pb-2">Transcription Jobs</h2>
+            <div className="space-y-3 mt-3">
                 {sortedJobs.map((job) => (
                     <div
                         key={job.jobId}
-                        className={`border rounded-lg p-4 ${
+                        className={`border rounded-lg p-3 hover:shadow-sm transition-all ${
                             job.status === 'completed' ? 'border-green-200 bg-green-50' :
                                 job.status === 'error' ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-white'
                         }`}
                     >
                         <div className="flex justify-between items-start">
                             <div className="flex flex-col">
-                                <span className="text-xs text-gray-500">Job #{job.jobId.split('-')[0]}</span>
-                                <span className="text-sm font-medium">
+                                <div className="flex items-center gap-2">
+                  <span className="text-xs font-mono bg-gray-100 px-1 py-0.5 rounded text-gray-600">
+                    {job.jobId.split('-')[0]}
+                  </span>
+                                    {getStatusBadge(job.status)}
+                                </div>
+                                <span className="text-xs mt-1 text-gray-500">
                   Started at {formatTime(job.createdAt)}
                 </span>
-                                {job.category && (
-                                    <span className="text-xs text-gray-500 mt-1">
-                    Using {getLlmProvider(job.jobId)}
-                  </span>
-                                )}
-                            </div>
-                            <div className="flex flex-col items-end">
-                <span className={`text-sm font-medium ${getStatusColor(job.status)}`}>
-                  {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
-                </span>
-                                {job.status === 'completed' && (
-                                    <button
-                                        onClick={() => toggleExpandJob(job.jobId)}
-                                        className="text-xs text-blue-600 hover:text-blue-800 mt-1"
-                                    >
-                                        {expandedJobId === job.jobId ? 'Hide details' : 'View details'}
-                                    </button>
-                                )}
                             </div>
                         </div>
 
                         {/* Progress bar */}
                         {job.status !== 'completed' && job.status !== 'error' && (
-                            <div className="mt-3">
-                                <div className="w-full bg-gray-200 rounded-full h-2.5">
+                            <div className="mt-2">
+                                <div className="progress-bar">
                                     <div
-                                        className="bg-blue-600 h-2.5 rounded-full"
+                                        className="progress-bar-fill"
                                         style={{ width: `${job.progress * 100}%` }}
                                     ></div>
                                 </div>
-                                <span className="text-xs text-gray-500 mt-1">
+                                <span className="text-xs text-gray-500 mt-0.5 inline-block">
                   {Math.round(job.progress * 100)}% complete
                 </span>
                             </div>
@@ -221,57 +224,42 @@ const JobsList: React.FC<JobsListProps> = ({ onSelectTranscription }) => {
 
                         {/* Error message */}
                         {job.error && (
-                            <div className="mt-3 text-sm text-red-600">
+                            <div className="mt-2 text-xs text-red-600 bg-red-50 p-2 rounded border border-red-100">
                                 Error: {job.error}
                             </div>
                         )}
 
                         {/* Completed transcription */}
                         {job.status === 'completed' && job.transcription && (
-                            <div className="mt-3">
-                                {expandedJobId === job.jobId ? (
-                                    <>
-                                        <p className="text-sm text-gray-700 whitespace-pre-wrap">
-                                            {job.transcription}
-                                        </p>
-
-                                        {/* Category display */}
-                                        {job.category ? (
-                                            <CategoryDisplay category={job.category} />
-                                        ) : (
-                                            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-700">
-                                                Categorization data is not available for this transcription.
-                                            </div>
-                                        )}
-
-                                        <div className="mt-4 flex justify-end">
-                                            <button
-                                                onClick={() => onSelectTranscription(job.transcription!, job.jobId)}
-                                                className="text-sm bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded"
-                                            >
-                                                Select this transcription
-                                            </button>
+                            <>
+                                <div className="mt-2">
+                                    <p className="text-xs text-gray-700 truncate bg-white p-1.5 rounded border border-gray-200">
+                                        {job.transcription.substring(0, 40)}
+                                        {job.transcription.length > 40 ? '...' : ''}
+                                    </p>
+                                    {job.category && (
+                                        <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                                            <span className="text-xs text-gray-500">Model:</span>
+                                            <span className={`px-1 py-0.5 rounded text-xs ${
+                                                getLlmProvider(job.jobId) === 'OpenAI'
+                                                    ? 'bg-green-100 text-green-800'
+                                                    : 'bg-indigo-100 text-indigo-800'
+                                            }`}>
+                        {getLlmProvider(job.jobId)}
+                      </span>
                                         </div>
-                                    </>
-                                ) : (
-                                    <div className="text-sm text-gray-700 truncate">
-                                        {job.transcription.substring(0, 60)}
-                                        {job.transcription.length > 60 ? '...' : ''}
-                                        {job.category ? (
-                                            <div className="mt-1 text-xs text-gray-500">
-                                                Topic: {job.category.primary_topic} |
-                                                Sentiment: <span className={getSentimentColor(job.category.sentiment)}>
-                          {job.category.sentiment}
-                        </span>
-                                            </div>
-                                        ) : (
-                                            <div className="mt-1 text-xs text-gray-500">
-                                                Categorization pending...
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
+                                    )}
+                                </div>
+
+                                <div className="mt-2">
+                                    <button
+                                        onClick={() => onSelectTranscription(job.transcription!, job.jobId)}
+                                        className="w-full btn bg-indigo-100 hover:bg-indigo-200 text-indigo-700 py-1 text-xs"
+                                    >
+                                        View Result
+                                    </button>
+                                </div>
+                            </>
                         )}
                     </div>
                 ))}

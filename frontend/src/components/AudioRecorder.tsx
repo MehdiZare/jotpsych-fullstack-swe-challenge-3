@@ -11,33 +11,9 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onJobStarted }) => {
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [recordingTime, setRecordingTime] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
   const [jobStarting, setJobStarting] = useState(false);
 
   const MAX_RECORDING_TIME = 10;
-
-  // Get user ID on component mount
-  useEffect(() => {
-    const getUserId = async () => {
-      const storedUserId = localStorage.getItem('userId');
-      if (storedUserId) {
-        setUserId(storedUserId);
-      } else {
-        try {
-          const response = await APIService.getUser();
-          if (response.data) {
-            setUserId(response.data);
-          } else if (response.error) {
-            console.error("Error getting user ID:", response.error);
-          }
-        } catch (err) {
-          console.error("Exception getting user ID:", err);
-        }
-      }
-    };
-
-    getUserId();
-  }, []);
 
   const stopRecording = () => {
     if (mediaRecorder && mediaRecorder.state === "recording") {
@@ -127,42 +103,65 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onJobStarted }) => {
   };
 
   return (
-      <div className="flex flex-col items-center gap-4">
-        {userId && (
-            <div className="text-xs text-gray-500 mb-1">
-              User ID: {userId.substring(0, 8)}...
-            </div>
-        )}
+      <div className="flex flex-col items-center">
+        {/* Icon/Logo */}
+        <div className="w-24 h-24 mb-4">
+          {isRecording ? (
+              <div className="w-full h-full flex items-center justify-center">
+                <div className="w-16 h-16 rounded-full bg-red-500 animate-pulse flex items-center justify-center">
+                  <div className="w-8 h-8 bg-white rounded-full"></div>
+                </div>
+              </div>
+          ) : jobStarting ? (
+              <div className="w-full h-full flex items-center justify-center">
+                <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+              </div>
+          ) : (
+              <div className="w-full h-full flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-16 h-16 text-indigo-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                  <line x1="12" y1="19" x2="12" y2="23"></line>
+                  <line x1="8" y1="23" x2="16" y2="23"></line>
+                </svg>
+              </div>
+          )}
+        </div>
 
-        {jobStarting ? (
-            <div className="flex flex-col items-center py-2">
-              <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-              <p className="text-sm text-gray-600 mt-2">Starting transcription job...</p>
-            </div>
-        ) : (
-            <button
-                onClick={isRecording ? stopRecording : startRecording}
-                className={`px-6 py-3 rounded-lg font-semibold ${
-                    isRecording
-                        ? "bg-red-500 hover:bg-red-600 text-white"
-                        : "bg-blue-500 hover:bg-blue-600 text-white"
-                }`}
-                disabled={jobStarting}
-            >
-              {isRecording
-                  ? `Stop Recording (${MAX_RECORDING_TIME - recordingTime}s)`
-                  : "Start Recording"}
-            </button>
-        )}
-
+        {/* Recording timer */}
         {isRecording && (
-            <p className="text-sm text-gray-600">
-              Recording in progress (Current time: {recordingTime}s)
-            </p>
+            <div className="mb-4 bg-indigo-100 text-indigo-800 px-3 py-1 rounded-full text-sm font-medium">
+              Recording: {recordingTime}s / {MAX_RECORDING_TIME}s
+            </div>
         )}
 
+        {/* Status text */}
+        <div className="mb-3 text-gray-600 text-center text-sm">
+          {isRecording
+              ? "Recording in progress..."
+              : jobStarting
+                  ? "Processing audio..."
+                  : "Ready to record"}
+        </div>
+
+        {/* Record button - SMALLER SIZE */}
+        <button
+            onClick={isRecording ? stopRecording : startRecording}
+            disabled={jobStarting}
+            className={`px-4 py-2 text-sm rounded-lg font-medium transition-all ${
+                isRecording
+                    ? "bg-red-500 hover:bg-red-600 text-white"
+                    : "bg-indigo-600 hover:bg-indigo-700 text-white"
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
+        >
+          {isRecording
+              ? "Stop Recording"
+              : "Start Recording"}
+        </button>
+
+        {/* Error message */}
         {error && (
-            <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-md text-red-600 text-sm">
+            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm w-full">
               {error}
             </div>
         )}
