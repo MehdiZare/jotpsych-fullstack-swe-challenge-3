@@ -7,6 +7,9 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
 
+    ANTHROPIC_MODEL_ID: str = "claude-3-5-haiku-latest"
+    OPENAI_MODEL_ID: str = "o4-mini-2025-04-16"
+
     # API configuration
     API_VERSION: str = "1.0.0"
     LOG_LEVEL: str = "INFO"

@@ -15,10 +15,14 @@ from src.schemas import TranscriptCategory
 class CategoryTool(BaseModel):
     """Tool schema for categorizing a transcript"""
     primary_topic: str = Field(..., description="The primary topic discussed in the transcript")
-    sentiment: Literal["positive", "neutral", "negative"] = Field(...,
-                                                                  description="The overall sentiment of the transcript")
-    keywords: str = Field(...,
-                          description="3-5 keywords that represent the main topics in the transcript, comma separated")
+    sentiment: Literal["positive", "neutral", "negative"] = Field(
+        ...,
+        description="The overall sentiment of the transcript"
+    )
+    keywords: str = Field(
+        ...,
+        description="3-5 keywords that represent the main topics in the transcript, comma separated"
+    )
     confidence: float = Field(..., description="Confidence score for the categorization (0.0 to 1.0)")
     summary: str = Field(..., description="A short summary of the transcript content (1-2 sentences)")
 
@@ -30,16 +34,14 @@ def get_llm_client(provider: Literal["openai", "anthropic"]) -> Any:
             raise ValueError("OPENAI_API_KEY not set in environment")
         return ChatOpenAI(
             api_key=settings.OPENAI_API_KEY,
-            model="gpt-3.5-turbo-0125",
-            temperature=0.1
+            model=settings.OPENAI_MODEL_ID,
         )
     elif provider == "anthropic":
         if not settings.ANTHROPIC_API_KEY:
             raise ValueError("ANTHROPIC_API_KEY not set in environment")
         return ChatAnthropic(
             api_key=settings.ANTHROPIC_API_KEY,
-            model="claude-2.1",
-            temperature=0.1
+            model_name=settings.ANTHROPIC_MODEL_ID,
         )
     else:
         raise ValueError(f"Unknown provider: {provider}")
@@ -53,13 +55,13 @@ def categorize_transcript(transcript: str, provider: Literal["openai", "anthropi
     try:
         # Get the appropriate LLM client
         llm = get_llm_client(provider)
+        llm_structured_output = llm.with_structured_output(CategoryTool)
 
-        # Create the output parser
-        parser = JsonOutputParser(pydantic_object=CategoryTool)
 
         # Create a structured prompt for categorization
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are an expert transcript analyzer. Your job is to categorize transcripts based on content.
+        prompt = ChatPromptTemplate.from_messages(
+            [
+                ("system", """You are an expert transcript analyzer. Your job is to categorize transcripts based on content.
 
 You MUST respond using ONLY valid JSON format that matches the CategoryTool schema.
 Your response should have these fields:
@@ -71,25 +73,26 @@ Your response should have these fields:
 
 DO NOT include any explanations, just return the JSON.
 """),
-            ("human", "Please categorize this transcript: {transcript}")
-        ])
+                ("human", "Please categorize this transcript: {transcript}")
+            ])
 
         # Create the chain
-        chain = prompt | llm | parser
+        chain = prompt | llm_structured_output
 
         # Execute the chain
         result = chain.invoke({"transcript": transcript})
 
-        # Parse the keywords from a string to a list
-        keywords_list = [k.strip() for k in result["keywords"].split(",")]
+        try:
+            keywords = result.keywords.split(",")
+        except Exception:
+            keywords = []
 
         # Convert to our TranscriptCategory schema
         category = TranscriptCategory(
-            primary_topic=result["primary_topic"],
-            sentiment=result["sentiment"],
-            keywords=keywords_list,
-            confidence=result["confidence"],
-            summary=result["summary"]
+            primary_topic=result.primary_topic,
+            sentiment=result.sentiment,
+            keywords=keywords,
+            summary=result.summary
         )
 
         return category
