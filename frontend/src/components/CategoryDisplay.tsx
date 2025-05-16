@@ -7,6 +7,28 @@ interface CategoryDisplayProps {
 }
 
 const CategoryDisplay: React.FC<CategoryDisplayProps> = ({ category }) => {
+    // Validation check to ensure we don't render with invalid data
+    if (!category || typeof category !== 'object') {
+        console.error("Invalid category data:", category);
+        return (
+            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm text-red-600">Error: Invalid category data</p>
+            </div>
+        );
+    }
+
+    // Validate required fields
+    if (!category.primary_topic || !category.sentiment || !category.keywords || !category.summary) {
+        console.error("Missing required fields in category:", category);
+        return (
+            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm text-yellow-700">
+                    Warning: Incomplete category data received from the server
+                </p>
+            </div>
+        );
+    }
+
     // Get sentiment color
     const getSentimentColor = (sentiment: string): string => {
         switch (sentiment) {
@@ -31,6 +53,13 @@ const CategoryDisplay: React.FC<CategoryDisplayProps> = ({ category }) => {
         return `${Math.round(confidence * 100)}%`;
     };
 
+    // Ensure keywords is an array
+    const keywords = Array.isArray(category.keywords)
+        ? category.keywords
+        : typeof category.keywords === 'string'
+            ? [category.keywords]
+            : [];
+
     return (
         <div className="mt-4 border border-gray-200 rounded-lg p-4 bg-gray-50">
             <h3 className="font-medium text-lg mb-2">Transcription Analysis</h3>
@@ -51,7 +80,7 @@ const CategoryDisplay: React.FC<CategoryDisplayProps> = ({ category }) => {
                 <div className="md:col-span-2">
                     <p className="text-sm text-gray-500">Keywords</p>
                     <div className="flex flex-wrap gap-2 mt-1">
-                        {category.keywords.map((keyword, index) => (
+                        {keywords.map((keyword, index) => (
                             <span
                                 key={index}
                                 className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full"

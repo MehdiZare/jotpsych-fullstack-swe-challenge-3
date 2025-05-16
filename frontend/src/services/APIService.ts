@@ -5,7 +5,8 @@ import {
   UserResponse,
   TranscriptionJobResponse,
   TranscriptionStatusResponse,
-  ActiveJob
+  ActiveJob,
+  TranscriptCategory
 } from '../types/api';
 
 class APIService {
@@ -112,21 +113,31 @@ class APIService {
       let updated = false;
 
       // Process results and update job status
-      results.forEach((result, index) => {
+      results.forEach((result) => {
         if (result.status === 'fulfilled' && result.value.data) {
           const jobStatus = result.value.data;
           const jobId = jobStatus.job_id;
 
+          console.log(`Received job update for ${jobId}:`, jobStatus);
+
           const currentJob = this.activeJobs.get(jobId);
           if (currentJob) {
-            // Update job status if it's changed
+            // Deep check for category changes
+            const categoryChanged = this.isCategoryDifferent(currentJob.category, jobStatus.category);
+
+            // Update job status if any field has changed
             if (
                 currentJob.status !== jobStatus.status ||
                 currentJob.progress !== jobStatus.progress ||
                 currentJob.transcription !== jobStatus.transcription ||
-                currentJob.category !== jobStatus.category ||
+                categoryChanged ||
                 currentJob.error !== jobStatus.error
             ) {
+              // Debug log the category
+              if (jobStatus.category) {
+                console.log(`Job ${jobId} has category:`, jobStatus.category);
+              }
+
               this.activeJobs.set(jobId, {
                 ...currentJob,
                 status: jobStatus.status,
@@ -144,6 +155,8 @@ class APIService {
               // could remove job from active jobs here, but we'll keep it for history
             }
           }
+        } else if (result.status === 'rejected') {
+          console.error("Job status request failed:", result.reason);
         }
       });
 
@@ -154,6 +167,41 @@ class APIService {
     } catch (error) {
       console.error("Failed to poll job status:", error);
     }
+  }
+
+  // Helper to deep compare category objects
+  private isCategoryDifferent(
+      oldCategory: TranscriptCategory | undefined,
+      newCategory: TranscriptCategory | undefined
+  ): boolean {
+    // If both are undefined or null, they're the same
+    if (!oldCategory && !newCategory) return false;
+
+    // If one is defined and the other isn't, they're different
+    if (!oldCategory || !newCategory) return true;
+
+    // Compare individual fields
+    if (
+        oldCategory.primary_topic !== newCategory.primary_topic ||
+        oldCategory.sentiment !== newCategory.sentiment ||
+        oldCategory.confidence !== newCategory.confidence ||
+        oldCategory.summary !== newCategory.summary
+    ) {
+      return true;
+    }
+
+    // Compare keywords arrays (length and content)
+    if (oldCategory.keywords.length !== newCategory.keywords.length) {
+      return true;
+    }
+
+    for (let i = 0; i < oldCategory.keywords.length; i++) {
+      if (oldCategory.keywords[i] !== newCategory.keywords[i]) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   // Generic request handler with version checking and user ID
@@ -196,6 +244,8 @@ class APIService {
         body: body instanceof FormData ? body : JSON.stringify(body),
       };
 
+      console.log(`Making ${method} request to ${endpoint}`);
+
       const response = await fetch(
           `${this.baseUrl}${endpoint}`,
           requestOptions
@@ -227,11 +277,14 @@ class APIService {
       }
 
       const data = await response.json();
+      console.log(`Response from ${endpoint}:`, data);
+
       return {
         data: data,
         version: backendVersion
       };
     } catch (error) {
+      console.error(`Error in request to ${endpoint}:`, error);
       return { error: `Request failed: ${error}` };
     }
   }
@@ -243,6 +296,7 @@ class APIService {
       const data = await response.json();
       return { data: data.version };
     } catch (error) {
+      console.error("Failed to get backend version:", error);
       return { error: `Failed to get backend version: ${error}` };
     }
   }
@@ -256,6 +310,7 @@ class APIService {
         error: response.error
       };
     } catch (error) {
+      console.error("Failed to get user:", error);
       return { error: `Failed to get user: ${error}` };
     }
   }
@@ -287,6 +342,7 @@ class APIService {
 
       return { error: response.error };
     } catch (error) {
+      console.error("Failed to start transcription:", error);
       return { error: `Failed to start transcription: ${error}` };
     }
   }

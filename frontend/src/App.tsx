@@ -11,45 +11,67 @@ function App() {
     const [transcription, setTranscription] = useState<string>("");
     const [category, setCategory] = useState<TranscriptCategory | null>(null);
     const [initialized, setInitialized] = useState(false);
+    const [initError, setInitError] = useState<string | null>(null);
     const [jobsUpdated, setJobsUpdated] = useState(0); // Counter to trigger re-renders
 
     // Check version and initialize on component mount
     useEffect(() => {
         const initialize = async () => {
             try {
+                console.log("Initializing application...");
                 // Check backend version
-                await APIService.getBackendVersion();
+                const versionResponse = await APIService.getBackendVersion();
+                if (versionResponse.error) {
+                    console.error("Error checking backend version:", versionResponse.error);
+                    setInitError("Could not connect to the server. Please try again later.");
+                    setInitialized(true);
+                    return;
+                }
 
                 // Initialize user ID if not already set
                 if (!localStorage.getItem('userId')) {
+                    console.log("No user ID found, requesting new one...");
                     const userResponse = await APIService.getUser();
+                    if (userResponse.error) {
+                        console.error("Error getting user ID:", userResponse.error);
+                        setInitError("Failed to initialize user. Please refresh and try again.");
+                        setInitialized(true);
+                        return;
+                    }
+
                     if (userResponse.data) {
                         localStorage.setItem('userId', userResponse.data);
+                        console.log("New user ID set:", userResponse.data);
                     }
+                } else {
+                    console.log("Using existing user ID:", localStorage.getItem('userId'));
                 }
 
                 setInitialized(true);
             } catch (error) {
-                console.error("Failed to initialize:", error);
-                setInitialized(true); // Still set to true so the app can function
+                console.error("Exception during initialization:", error);
+                setInitError("An unexpected error occurred. Please refresh and try again.");
+                setInitialized(true);
             }
         };
 
         initialize();
     }, []);
 
-    const handleTranscriptionSelect = (text: string) => {
+    const handleTranscriptionSelect = (text: string, jobId: string) => {
+        console.log(`Selected transcription from job ${jobId}`);
         setTranscription(text);
 
-        // Find the job with this transcription to get its category
+        // Find the job with this ID to get its category
         const jobs = APIService.getActiveJobs();
-        for (const job of jobs.values()) {
-            if (job.transcription === text && job.category) {
-                setCategory(job.category);
-                break;
-            } else {
-                setCategory(null);
-            }
+        const job = jobs.get(jobId);
+
+        if (job && job.category) {
+            console.log("Found category for selected job:", job.category);
+            setCategory(job.category);
+        } else {
+            console.log("No category found for job:", jobId);
+            setCategory(null);
         }
 
         // Scroll to the top to show the selected transcription
@@ -64,7 +86,29 @@ function App() {
     if (!initialized) {
         return (
             <div className="min-h-screen flex items-center justify-center">
-                <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+        );
+    }
+
+    if (initError) {
+        return (
+            <div className="min-h-screen flex items-center justify-center p-4">
+                <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md w-full text-center">
+                    <div className="text-red-600 mb-4">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                    </div>
+                    <h2 className="text-xl font-bold text-red-700 mb-2">Connection Error</h2>
+                    <p className="text-gray-700 mb-4">{initError}</p>
+                    <button
+                        onClick={() => window.location.reload()}
+                        className="bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-lg w-full"
+                    >
+                        Retry
+                    </button>
+                </div>
             </div>
         );
     }
@@ -99,7 +143,13 @@ function App() {
                             {transcription}
                         </p>
 
-                        {category && <CategoryDisplay category={category} />}
+                        {category ? (
+                            <CategoryDisplay category={category} />
+                        ) : (
+                            <div className="mt-4 p-3 bg-gray-100 rounded-lg">
+                                <p className="text-sm text-gray-600">No categorization data available for this transcription.</p>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
