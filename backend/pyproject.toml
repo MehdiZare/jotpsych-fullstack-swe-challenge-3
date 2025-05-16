@@ -5,6 +5,9 @@ description = ""
 authors = [
     {name = " Mehdi Zare",email = "mehdizarem@users.noreply.github.com"}
 ]
+packages = [
+    {include = "src"}
+]
 readme = "README.md"
 requires-python = ">=3.12, <4.0"
 dependencies = [
